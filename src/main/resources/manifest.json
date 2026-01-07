@@ -1,0 +1,18 @@
+{
+  "Group": "ApexHosting",
+  "Name": "PrometheusExporter",
+  "Version": "1.0.0",
+  "Authors": [
+    {
+      "Name": "Dan Bethel",
+      "Email": "dan.bethel@nitrado.net",
+      "Url": "https://apexminecrafthosting.com/"
+    }
+  ],
+  "Website": "https://apexminecrafthosting.com/",
+  "Main": "com.apexminecrafthosting.hytale.plugins.prometheusexporter.PrometheusExporter",
+  "ServerVersion": "*",
+  "Dependencies": {
+    "Nitrado:WebServer": "*"
+  }
+}
