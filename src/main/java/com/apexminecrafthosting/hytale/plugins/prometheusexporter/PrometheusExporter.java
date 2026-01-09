@@ -94,8 +94,8 @@ public class PrometheusExporter extends JavaPlugin {
 
         try {
             var webServer = this.webServerPlugin.getWebServer();
-            webServer.addFilter(this, new RequirePermissionsFilter(Permissions.READ), "/metrics");
             webServer.addServlet(this, "/metrics", new PrometheusMetricsServlet(this.prometheusRegistry));
+            webServer.addFilter(this, new RequirePermissionsFilter(Permissions.READ), "/metrics");
         } catch (Exception e) {
             getLogger().at(Level.SEVERE).log("Failed to register route: " + e.getMessage());
         }
