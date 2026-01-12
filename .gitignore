@@ -1,0 +1,56 @@
+# IntelliJ Project Files
+.idea
+*.iml
+
+# Compiled Data
+target/
+build/
+out/
+
+# Maven
+dependency-reduced-pom.xml
+
+# Gradle
+.gradle
+
+# Ignore Gradle GUI prometheusExporterConfig
+gradle-app.setting
+
+# Cache of project
+.gradletasknamecache
+
+# macOS
+.DS_Store
+
+# Hytale Server Runtime Files
+Testing/
+*.bson.bak
+prometheusExporterConfig.bson
+warps.bson
+
+permissions.json
+bans.json
+whitelist.json
+
+/logs/
+/dumps/
+
+/lib/
+/prefabs/
+/universe/
+/plugins/
+/scripts/
+/scriptsLibrary/
+/import/
+
+# Hytale Server Auth
+.authMeta
+.authMeta.bak
+crl
+.crl
+
+# Vertex cache
+.vertx/
+
+docker.log
+docker.sh
