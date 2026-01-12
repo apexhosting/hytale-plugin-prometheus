@@ -16,6 +16,11 @@ public final class HytaleMetricsCollector {
 
     private final PrometheusRegistry registry;
 
+    /**
+     * Precision for TPS calculations.
+     */
+    private static final double PRECISION = 1000;
+
     // Player metrics (per-world)
     private final Gauge onlinePlayersGauge;
 
@@ -24,7 +29,9 @@ public final class HytaleMetricsCollector {
     private final Counter totalLoadedChunksCounter;
     private final Counter totalLoadedChunksDiskCounter;
     private final Counter totalGeneratedChunksCounter;
-    private final Gauge   tpsGauge;
+    private final Gauge   tpsAvgGauge;
+    private final Gauge   tpsMinGauge;
+    private final Gauge   tpsMaxGauge;
     private final Gauge   tpsTargetGauge;
 
     // Entity metrics (per-world)
@@ -78,10 +85,24 @@ public final class HytaleMetricsCollector {
             .register(registry);
 
         // TPS metrics with world label
-        this.tpsGauge = Gauge.builder()
-            .name("hytale_world_tps")
-            .help("Measured TPS derived from recent ticks per world")
-            .labelNames("world")
+        this.tpsAvgGauge = Gauge.builder()
+            .name("hytale_world_tps_avg")
+            .help("Measured average TPS derived from recent ticks per world in the given period")
+            .labelNames("world", "period")
+            .withoutExemplars()
+            .register(registry);
+
+        this.tpsMinGauge = Gauge.builder()
+            .name("hytale_world_tps_min")
+            .help("Measured minimum TPS derived from recent ticks per world in the given period")
+            .labelNames("world", "period")
+            .withoutExemplars()
+            .register(registry);
+
+        this.tpsMaxGauge = Gauge.builder()
+            .name("hytale_world_tps_max")
+            .help("Measured maximum TPS derived from recent ticks per world in the given period")
+            .labelNames("world", "period")
             .withoutExemplars()
             .register(registry);
 
@@ -187,59 +208,36 @@ public final class HytaleMetricsCollector {
 
     private void updatePerformanceMetrics(@Nonnull World world) {
         HistoricMetric metrics = world.getBufferedTickLengthMetricSet();
-        long[] periods = metrics.getPeriodsNanos();
-        if (periods.length == 0) {
-            return;
+        var tickStepNanos = world.getTickStepNanos();
+
+        long[] periodsNanos = metrics.getPeriodsNanos();
+
+        for (int i = 0; i < periodsNanos.length; i++) {
+            long periodSeconds =  periodsNanos[i] / 1_000_000_000;
+
+            setTpsGauge(
+                world.getName(),
+                periodSeconds,
+                tpsFromDelta(metrics.getAverage(i), tickStepNanos),
+                tpsFromDelta(metrics.calculateMin(i), tickStepNanos),
+                tpsFromDelta(metrics.calculateMax(i), tickStepNanos)
+            );
         }
-
-        int windowIndex = periods.length - 1;
-        long[] timestamps = metrics.getTimestamps(windowIndex);
-        long[] values = metrics.getValues(windowIndex);
-        int sampleLength = Math.min(timestamps.length, values.length);
-        if (sampleLength == 0) return;
-        long tickStepNanos = world.getTickStepNanos();
-        TickSampleState state = tickSamples.computeIfAbsent(world.getName(), k -> new TickSampleState());
-
-        long now = System.nanoTime();
-        long elapsedNanos = now - state.lastPollNano;
-        if (elapsedNanos <= 0) elapsedNanos = tickStepNanos;
-        state.lastPollNano = now;
-
-        long newestTimestamp = state.lastProcessedTimestamp;
-        int ticksProcessed = 0;
-        for (int i = sampleLength - 1; i >= 0; i--) {
-            long ts = timestamps[i];
-            if (ts <= state.lastProcessedTimestamp) break;
-
-            long delta = values[i];
-            if (delta <= 0 || delta == Long.MAX_VALUE) continue;
-
-            ticksProcessed++;
-            if (ts > newestTimestamp) newestTimestamp = ts;
-        }
-
-        double tps;
-        if (ticksProcessed > 0) {
-            state.lastProcessedTimestamp = newestTimestamp;
-            double elapsedSeconds = elapsedNanos / 1_000_000_000d;
-            tps = ticksProcessed / Math.max(elapsedSeconds, tickStepNanos / 1_000_000_000d);
-        } else if (state.lastProcessedTimestamp == Long.MIN_VALUE) {
-            tps = world.getTps();
-        } else {
-            double elapsedSeconds = elapsedNanos / 1_000_000_000d;
-            if (elapsedSeconds <= 0) elapsedSeconds = tickStepNanos / 1_000_000_000d;
-            tps = 0.0d;
-        }
-
-        state.lastReportedTps = tps;
-        setTpsGauge(world.getName(), tps);
 
         setTpsTarget(world.getName(), world.getTps());
     }
 
-    private void setTpsGauge(String worldName, double value) {
-        if (Double.isFinite(value) && value > 0) {
-            tpsGauge.labelValues(worldName).set(value);
+    private void setTpsGauge(String worldName, long periodSeconds, double average, double min, double max) {
+        if (Double.isFinite(average) && average > 0) {
+            tpsAvgGauge.labelValues(worldName, String.valueOf(periodSeconds)).set(average);
+        }
+
+        if (Double.isFinite(min) && min > 0) {
+            tpsMinGauge.labelValues(worldName, String.valueOf(periodSeconds)).set(min);
+        }
+
+        if (Double.isFinite(max) && max > 0) {
+            tpsMaxGauge.labelValues(worldName, String.valueOf(periodSeconds)).set(max);
         }
     }
 
@@ -276,5 +274,31 @@ public final class HytaleMetricsCollector {
         long lastProcessedTimestamp = Long.MIN_VALUE;
         long lastPollNano = System.nanoTime();
         double lastReportedTps;
+    }
+
+    /**
+     * Convert tick delta to TPS.
+     *
+     * @param delta The tick delta in nanoseconds.
+     * @param min   The minimum tick step in nanoseconds.
+     * @return The TPS value.
+     */
+    public static double tpsFromDelta(final long delta, final long min) {
+        long adjustedDelta = delta;
+        if (adjustedDelta < min) adjustedDelta = min;
+        return Math.round(((1.0 / adjustedDelta) * 1_000_000_000) * PRECISION) / PRECISION;
+    }
+
+    /**
+     * Convert tick delta to TPS.
+     *
+     * @param delta The tick delta in nanoseconds.
+     * @param min   The minimum tick step in nanoseconds.
+     * @return The TPS value.
+     */
+    public static double tpsFromDelta(final double delta, final long min) {
+        double adjustedDelta = delta;
+        if (adjustedDelta < min) adjustedDelta = min;
+        return Math.round(((1.0 / adjustedDelta) * 1_000_000_000) * PRECISION) / PRECISION;
     }
 }
