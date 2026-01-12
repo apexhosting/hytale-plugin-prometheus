@@ -19,7 +19,6 @@ import com.hypixel.hytale.server.core.util.Config;
 import io.prometheus.metrics.instrumentation.jvm.JvmMetrics;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import io.prometheus.metrics.exporter.servlet.jakarta.PrometheusMetricsServlet;
-import net.nitrado.hytale.plugins.webserver.WebServer;
 import net.nitrado.hytale.plugins.webserver.WebServerPlugin;
 import net.nitrado.hytale.plugins.webserver.authorization.RequirePermissionsFilter;
 
@@ -93,9 +92,12 @@ public class PrometheusExporter extends JavaPlugin {
         this.webServerPlugin = webServerPlugin;
 
         try {
-            var webServer = this.webServerPlugin.getWebServer();
-            webServer.addServlet(this, "/metrics", new PrometheusMetricsServlet(this.prometheusRegistry));
-            webServer.addFilter(this, new RequirePermissionsFilter(Permissions.READ), "/metrics");
+            this.webServerPlugin.addServlet(
+                this,
+                "/metrics",
+                new PrometheusMetricsServlet(this.prometheusRegistry),
+                new RequirePermissionsFilter(Permissions.READ)
+            );
         } catch (Exception e) {
             getLogger().at(Level.SEVERE).log("Failed to register route: " + e.getMessage());
         }
@@ -113,8 +115,7 @@ public class PrometheusExporter extends JavaPlugin {
         }
 
         if (webServerPlugin != null) {
-            webServerPlugin.getWebServer().removeServlets(this);
-            // TODO remove filters
+            webServerPlugin.removeServlets(this);
         }
     }
 }
