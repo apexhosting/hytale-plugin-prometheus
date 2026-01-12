@@ -5,14 +5,16 @@ import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.registry.MultiCollector;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
+import io.prometheus.metrics.model.snapshots.MetricSnapshots;
 
 import javax.annotation.Nonnull;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class HytaleMetricsCollector {
+public final class HytaleMetricsCollector implements MultiCollector {
 
     private final PrometheusRegistry registry;
 
@@ -42,7 +44,6 @@ public final class HytaleMetricsCollector {
 
     // Track last known values for counters to detect resets
     private final Map<String, CounterState> chunkCounterStates = new ConcurrentHashMap<>();
-    private final Map<String, TickSampleState> tickSamples = new ConcurrentHashMap<>();
 
     public HytaleMetricsCollector(@Nonnull PrometheusRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
@@ -127,6 +128,18 @@ public final class HytaleMetricsCollector {
             .help("Time taken by the Hytale metrics collector in milliseconds")
             .withoutExemplars()
             .register(registry);
+
+        // Register this collector for scrape-time callbacks
+        registry.register(this);
+    }
+
+    /**
+     * Called by Prometheus on each scrape. Collects all metrics at scrape time.
+     */
+    @Override
+    public MetricSnapshots collect() {
+        update();
+        return MetricSnapshots.of();
     }
 
     // Collect all metrics (players, chunks, entities).
@@ -268,12 +281,6 @@ public final class HytaleMetricsCollector {
 
     private static final class CounterState {
         int lastValue;
-    }
-
-    private static final class TickSampleState {
-        long lastProcessedTimestamp = Long.MIN_VALUE;
-        long lastPollNano = System.nanoTime();
-        double lastReportedTps;
     }
 
     /**

@@ -3,15 +3,12 @@ package com.apexminecrafthosting.hytale.plugins.prometheusexporter;
 import com.apexminecrafthosting.hytale.plugins.prometheusexporter.config.PrometheusExporterConfig;
 import com.apexminecrafthosting.hytale.plugins.prometheusexporter.metrics.HytaleMetricsCollector;
 import com.hypixel.hytale.common.plugin.PluginIdentifier;
-import com.hypixel.hytale.server.core.HytaleServer;
 import com.hypixel.hytale.server.core.event.events.BootEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import com.hypixel.hytale.server.core.plugin.PluginManager;
@@ -28,8 +25,6 @@ public class PrometheusExporter extends JavaPlugin {
 
     @Nullable
     private HytaleMetricsCollector hytaleMetricsCollector;
-    @Nullable
-    private ScheduledFuture<?> hytaleMetricsUpdateTasks;
 
     private PrometheusRegistry prometheusRegistry;
 
@@ -51,35 +46,14 @@ public class PrometheusExporter extends JavaPlugin {
         // Register built-in JVM metrics from Prometheus
         JvmMetrics.builder().register(this.prometheusRegistry);
 
-        // Register Hytale metrics collector
+        // Register Hytale metrics collector (implements MultiCollector for scrape-time collection)
         hytaleMetricsCollector = new HytaleMetricsCollector(this.prometheusRegistry);
-
-        getLogger().at(Level.INFO).log("Scheduling Hytale metrics collection task for every " + config.get().getUpdateIntervalSeconds() + " seconds...");
-
-        hytaleMetricsUpdateTasks = HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(() -> {
-                try {
-                    if (hytaleMetricsCollector != null) {
-                        hytaleMetricsCollector.update();
-                    }
-                } catch (Exception e) {
-                    getLogger().at(Level.WARNING).withCause(e).log("Failed to update hytale metrics");
-                }
-            },
-            1, // Initial delay
-            config.get().getUpdateIntervalSeconds(), // Interval
-            TimeUnit.SECONDS
-        );
 
         try {
             this.registerHandlers();
         } catch (Exception e) {
             getLogger().at(Level.SEVERE).withCause(e).log("Failed to start Prometheus Exporter HTTP server");
         }
-
-        // Register BootEvent to start the HTTP server and schedule metrics collection
-        getEventRegistry().register(BootEvent.class, event -> {
-
-        });
     }
 
     private void registerHandlers() {
@@ -107,12 +81,6 @@ public class PrometheusExporter extends JavaPlugin {
     @Override
     protected void shutdown() {
         getLogger().at(Level.INFO).log("Shutting down Prometheus Exporter...");
-
-        // Cancel the hytale metrics update task
-        if (hytaleMetricsUpdateTasks != null && !hytaleMetricsUpdateTasks.isCancelled()) {
-            hytaleMetricsUpdateTasks.cancel(false);
-            hytaleMetricsUpdateTasks = null;
-        }
 
         if (webServerPlugin != null) {
             webServerPlugin.removeServlets(this);
