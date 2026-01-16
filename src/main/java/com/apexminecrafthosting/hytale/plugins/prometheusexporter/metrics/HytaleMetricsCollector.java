@@ -197,8 +197,8 @@ public final class HytaleMetricsCollector implements MultiCollector {
                 Labels labels = Labels.of("world", worldName, "period", periodSeconds);
 
                 double avg = tpsFromDelta(metrics.getAverage(i), tickStepNanos);
-                double min = tpsFromDelta(metrics.calculateMin(i), tickStepNanos);
-                double max = tpsFromDelta(metrics.calculateMax(i), tickStepNanos);
+                double min = tpsFromDelta(metrics.calculateMax(i), tickStepNanos);
+                double max = tpsFromDelta(metrics.calculateMin(i), tickStepNanos);
 
                 if (Double.isFinite(avg) && avg > 0) {
                     avgBuilder.dataPoint(GaugeSnapshot.GaugeDataPointSnapshot.builder()
